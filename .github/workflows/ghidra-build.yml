@@ -16,6 +16,7 @@ on:
   push:
     branches: [ main ]
     paths: ['decompilers/d2d_ghidra/**']
+  workflow_dispatch:
 
 jobs:
   build:
