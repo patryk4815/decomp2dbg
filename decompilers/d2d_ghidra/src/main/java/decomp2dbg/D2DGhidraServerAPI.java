@@ -15,6 +15,7 @@ import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
+import ghidra.framework.Application;
 
 public class D2DGhidraServerAPI {
     private final D2DGhidraServer server;
@@ -336,6 +337,20 @@ public class D2DGhidraServerAPI {
 	public String binary_path() {
 		return this.server.plugin.getCurrentProgram().getExecutablePath();
 	}
+
+	/// Get version information about the decompiler environment.
+	public Map<String, String> versions() {
+			Map<String, String> res = new HashMap<>();
+			res.put("name", "ghidra");
+			res.put("version", Application.getApplicationVersion().toString());
+			res.put("java", System.getProperty("java.version"));
+			return res;
+	}
+
+	/// Navigate to this address in the GUI.
+	public boolean focus_address(Integer addr) {
+		return this.server.plugin.focus_address(addr);
+  }
 
 	public Map<String, Object> elf_info() {
 		if(!this.server.plugin.elfInfoCache.isEmpty())

@@ -1,5 +1,6 @@
 from xmlrpc.server import SimpleXMLRPCServer, SimpleXMLRPCRequestHandler
 import os
+import sys
 
 import angr
 from angr.analyses.decompiler.structured_codegen import DummyStructuredCodeGenerator
@@ -156,6 +157,27 @@ class AngrDecompilerServer:
         """
         return self._instance.project.loader.main_object.binary
 
+    def versions(self) -> dict[str, str]:
+        """
+        Get version information about the decompiler environment.
+        """
+        return {
+            "name": "angr",
+            "version": angr.__version__,
+            "python": sys.version,
+        }
+
+
+    def focus_address(self, addr: int) -> bool:
+        """
+        Focus the given address in the GUI of the decompiler. If possible,
+        don't switch the window focus.
+
+        Returns:
+            True if successful, otherwise False
+        """
+        self._workspace.jump_to(self.rebase_addr(addr))
+        return True
 
     #
     # XMLRPC Server
@@ -186,6 +208,8 @@ class AngrDecompilerServer:
         server.register_function(self.structs)
         server.register_function(self.breakpoints)
         server.register_function(self.binary_path)
+        server.register_function(self.versions)
+        server.register_function(self.focus_address)
         server.register_function(self.ping)
         print("[+] Registered decompilation server!")
         while True:

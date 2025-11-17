@@ -12,6 +12,7 @@
 from xmlrpc.server import SimpleXMLRPCServer, SimpleXMLRPCRequestHandler
 import threading
 import functools
+import sys
 
 import ida_hexrays
 import ida_funcs
@@ -21,6 +22,7 @@ import ida_lines
 import idaapi
 import idautils
 import ida_segment
+import ida_kernwin
 import ida_nalt
 
 
@@ -311,6 +313,37 @@ class IDADecompilerServer:
         """
         return ida_nalt.get_input_file_path()
 
+    @execute_read
+    def versions(self) -> dict[str, str]:
+        """
+        Get version information about the decompiler environment.
+        """
+        resp = {
+            # the name of the decompiler
+            "name": "ida",
+            # the version of the decompiler
+            "version": idaapi.get_kernel_version(),
+            # the version of the runtime it uses
+            "python": sys.version,
+            # any decompiler-specific auxiliary stuff
+            "hexrays": idaapi.get_hexrays_version() if idaapi.init_hexrays_plugin() else None,
+        }
+        return resp
+
+    @execute_read
+    def focus_address(self, addr: int) -> bool:
+        """
+        Focus the given address in the GUI of the decompiler. If possible,
+        don't switch the window focus.
+
+        Returns:
+            True if successful, otherwise False
+        """
+        addr = self.rebase_addr(addr)
+        # https://python.docs.hex-rays.com/ida_kernwin/index.html#ida_kernwin.jumpto
+        # Using C++ api instead of idc one to avoid activating the IDA window
+        return ida_kernwin.jumpto(addr, -1, 0)
+
     #
     # XMLRPC Server
     #
@@ -340,6 +373,8 @@ class IDADecompilerServer:
         server.register_function(self.structs)
         server.register_function(self.breakpoints)
         server.register_function(self.binary_path)
+        server.register_function(self.versions)
+        server.register_function(self.focus_address)
         server.register_function(self.ping)
         print("[+] Registered decompilation server!")
         while True:
