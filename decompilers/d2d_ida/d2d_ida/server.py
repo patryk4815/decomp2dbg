@@ -185,8 +185,8 @@ class IDADecompilerServer:
             return resp
 
         # get var info
-        stack_vars = {}
-        reg_vars = {}
+        stack_vars = []
+        reg_vars = []
 
         for var in cfunc.lvars:
             if not var.name:
@@ -194,22 +194,25 @@ class IDADecompilerServer:
 
             # stack variables
             if var.is_stk_var():
-                offset = cfunc.mba.stacksize - var.location.stkoff()
-                stack_vars[str(offset)] = {
+                # https://python.docs.hex-rays.com/ida_typeinf/index.html#ida_typeinf.argloc_t.stkoff
+                # Doesn't really specify what offset, but testing shows its from RSP.
+                stack_vars.append({
                     "name": var.name,
-                    "type": str(var.type())
-                }
+                    "type": str(var.type()),
+                    "from_sp": str(var.location.stkoff()),
+                    "from_frame": None
+                })
 
             # register variables
             elif var.is_reg_var():
                 regnum = var.get_reg1()
                 reg_name = idaapi.get_mreg_name(regnum, var.width)
 
-                reg_vars[var.name] = {
+                reg_vars.append({
+                    "name": var.name,
+                    "type": str(var.type()),
                     "reg_name": reg_name,
-                    "type": str(var.type())
-                }
-                pass
+                })
 
         resp["stack_vars"] = stack_vars
         resp["reg_vars"] = reg_vars

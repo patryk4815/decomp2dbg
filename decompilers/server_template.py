@@ -39,18 +39,24 @@ class DecompilerServer:
         # to convert the stringified number to an int, whatever
         # base it is in.
         resp = {
-            "args": {
-                "0": {
+            "reg_vars": [
+                {
+                    "name": "some_var_name", 
+                    "type": "some_type",
+                    "reg_name": "something_like_r12",
+                }, # ...
+            ],
+            "stack_vars": [
+                {
                     "name": "example_name",
                     "type": "some_type",
-                },
-            },
-            "stack_vars": {
-                "16": {
-                    "name": "example_name",
-                    "type": "some_type",
-                },
-            },
+                    # Either from_sp or from_frame will be non-None (a stringified number).
+                    # Both are positive numbers.
+                    # Generally, from_frame will be 0 for the return address.
+                    "from_sp": "16",   # None | str
+                    "from_frame": None  # None | str
+                }, # ...
+            ],
         }
 
         return resp

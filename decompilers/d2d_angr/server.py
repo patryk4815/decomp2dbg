@@ -108,8 +108,8 @@ class AngrDecompilerServer:
 
         """
         resp = {
-            "reg_vars": {},
-            "stack_vars": {}
+            "reg_vars": [],
+            "stack_vars": []
         }
 
         addr = self.rebase_addr(addr)
@@ -119,10 +119,13 @@ class AngrDecompilerServer:
         manager = decomp.cfunc.variable_manager
         for var in manager._unified_variables:
             if isinstance(var, angr.sim_variable.SimStackVariable):
-                resp["stack_vars"][str(var.offset)] = {
+                resp["stack_vars"].append({
                     "name": var.name,
-                    "type": manager.get_variable_type(var).c_repr()
-                }
+                    "type": manager.get_variable_type(var).c_repr(),
+                    # offset from frame base
+                    "from_frame": str(var.offset),
+                    "from_sp": None,
+                })
 
         return resp
 

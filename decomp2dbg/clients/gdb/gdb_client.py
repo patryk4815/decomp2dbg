@@ -104,34 +104,42 @@ class GDBDecompilerClient(DecompilerClient):
 
         return type_str
 
-    def _find_local_var_base_ptr(self):
-        if self._lvar_bptr is not None:
-            return self._lvar_bptr
+    @lru_cache()
+    def _ptr_size(self) -> int:
+        return gdb.lookup_type("void").pointer().sizeof
 
-        candidates = ["$rbp", "$ebp", "$bp", "$fp"]
-        for candidate in candidates:
-            # the register must exist
-            try:
-                val = gdb.parse_and_eval(candidate)
-            except Exception:
-                continue
-
-            # the register must have a real value
-            try:
-                int(str(val), 16)
-            except Exception:
-                continue
-
-            self._lvar_bptr = candidate
-            return self._lvar_bptr
-
+    def _get_frame(self) -> int | None:
+        # We want to extract the "frame at" thing.
+        # pwndbg> info frame
+        # Stack level 0, frame at 0x7fffffffe130:
+        #  rip = 0x555555555185 in main (main.c:7); saved rip = 0x7ffff7c2773b
+        #  called by frame at 0x7fffffffe1d0
+        #  source language c.
+        #  Arglist at 0x7fffffffe120, args: 
+        #  Locals at 0x7fffffffe120, Previous frame's sp is 0x7fffffffe130
+        #  Saved registers:
+        #   rbp at 0x7fffffffe120, rip at 0x7fffffffe128
+        try:
+            frame_txt: str = gdb.execute("info frame", to_string=True)
+            match = re.search(r"frame at (0x[0-9a-fA-F]+):", frame_txt)
+            if match:
+                frame_addr = int(match.group(1), 16)
+                if frame_addr == 0:
+                    # Happens sometimes at the binary entrypoint
+                    return None
+                # GDB for some reason returns one ptr past retaddr
+                return frame_addr - self._ptr_size()
+            return None
+        except Exception:
+            return None
 
     def update_function_data(self, addr):
         func_data = self.function_data(addr)
-        reg_vars = func_data.get("reg_vars", {})
-        stack_vars = func_data.get("stack_vars", {})
+        reg_vars = func_data.get("reg_vars", [])
+        stack_vars = func_data.get("stack_vars", [])
 
-        for name, var in reg_vars.items():
+        for var in reg_vars:
+            name = var["name"]
             type_str = self._clean_type_str(var['type'])
             reg_name = var['reg_name']
             expr = f"""(({type_str}) (${reg_name}))"""
@@ -148,29 +156,51 @@ class GDBDecompilerClient(DecompilerClient):
                 except Exception:
                     continue
 
-        for offset, stack_var in stack_vars.items():
-            offset = abs(int(offset, 0))
-            type_str = self._clean_type_str(stack_var['type'])
-            lvar_bptr = self._find_local_var_base_ptr()
-            if lvar_bptr == "$rbp":
-                offset -= 8
-            elif lvar_bptr == "$ebp":
-                offset -= 4
-
-            expr = f"""({type_str}*) ({lvar_bptr} - {offset})"""
+        for stack_var in stack_vars:
             var_name = stack_var['name']
+            type_str = self._clean_type_str(stack_var['type'])
+            # Have to use .get() because of ghidra
+            from_sp_str: None | str = stack_var.get("from_sp")
+            from_frame_str: None | str = stack_var.get("from_frame")
 
-            try:
-                gdb.execute(f"set ${var_name} = " + expr)
-                type_unknown = False
-            except Exception:
-                type_unknown = True
-
-            if type_unknown:
+            # We prefer from sp, because sp always exists while it may be
+            # hard/unstable/impossible to find the frame
+            # We don't account for architectures where the stack goes in the
+            # different direction.
+            if from_sp_str is not None:
+                from_sp: int = int(from_sp_str, 0)
                 try:
-                    gdb.execute(f"set ${var_name} = ($fp - {offset})")
+                    gdb.execute(f"set ${var_name} = ({type_str}*) ($sp + {from_sp})")
+                    type_unknown = False
                 except Exception:
+                    type_unknown = True
+
+                if type_unknown:
+                    try:
+                        gdb.execute(f"set ${var_name} = ($sp + {from_sp})")
+                    except Exception:
+                        continue
+            else:
+                if from_frame_str is None:
+                    # Should never happen.
                     continue
+
+                from_frame: int = int(from_frame_str, 0)
+                frame_addr: int | None = self._get_frame()
+                if frame_addr is None:
+                    continue
+
+                try:
+                    gdb.execute(f"set ${var_name} = ({type_str}*) ({frame_addr} - {from_frame})")
+                    type_unknown = False
+                except Exception:
+                    type_unknown = True
+
+                if type_unknown:
+                    try:
+                        gdb.execute(f"set ${var_name} = ({frame_addr} - {from_frame})")
+                    except Exception:
+                        continue
 
 
 #
